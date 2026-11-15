@@ -12,6 +12,7 @@ import {identityAssurance} from '../browser/identity.mjs';
 import { migrate } from '../lib/migrate.mjs';
 import { setupInterview,scopeDenied } from '../lib/google-contract.mjs';
 import {setupChoices,remember} from '../lib/rulings.mjs';
+const needsSplit=a=>Object.keys(a.sites).filter(site=>!(site==='google'&&a.google&&a.sites.google.identity?.kind==='google')).length>1;
 export const HELP=`sign-in [--accounts FILE] [--on-holder EXPECTED_ID] COMMAND
   machine
   migrate --registry FILE [--identities FILE] [--sites-from FILE] [--private-machine]
@@ -31,6 +32,7 @@ export const HELP=`sign-in [--accounts FILE] [--on-holder EXPECTED_ID] COMMAND
     Saves each human answer once before installing. Answers are choices, not grants.
   google explain
   google opt-in ACCOUNT (human terminal; can be added after setup)
+    Then open ACCOUNT --site google to verify the intended Google identity.
   google project ACCOUNT --project OWN_PROJECT [--client-file PRIVATE_DOWNLOAD] (human)
   google console ACCOUNT --step project|api|consent|desktop|production|iam [--api API]
     [--field ACCESSIBLE_NAME --value TEXT | --click ACCESSIBLE_NAME]
@@ -91,7 +93,7 @@ async function dispatch(argv){
     return (await import('../lib/setup.mjs')).doctor(file);
   }
   if(cmd==='google'&&route==='explain')return (await import('../lib/google.mjs')).explanation;
-  if(cmd==='accounts-upgrade')return locked(file,()=>{const data=load(file);atomicJSON(file,data);return {upgraded:true,accounts:Object.keys(data.accounts),rulingsSaved:true,profilesMoved:false,needsSplit:Object.entries(data.accounts).filter(([,a])=>Object.keys(a.sites).length>1).map(([account])=>({account,command:`split ${account} --keep SITE`}))};});
+  if(cmd==='accounts-upgrade')return locked(file,()=>{const data=load(file);atomicJSON(file,data);return {upgraded:true,accounts:Object.keys(data.accounts),rulingsSaved:true,profilesMoved:false,needsSplit:Object.entries(data.accounts).filter(([,a])=>needsSplit(a)).map(([account])=>({account,command:`split ${account} --keep SITE`}))};});
   if(cmd==='ruling'&&!o.value&&!o.remove&&fs.existsSync(file)){const records=load(file).rulings;if(Object.hasOwn(records,name))return {ruling:name,record:records[name]};}
   if(cmd==='ruling')return human(async ask=>{
     const parts=name.split('.'),d=fs.existsSync(file)?load(file):null;
@@ -105,7 +107,7 @@ async function dispatch(argv){
   if(cmd==='add-site')return addSite(file,name,o.site,o.origin,{exclusive:!!o['private-machine']});
   if(cmd==='split')return splitAccount(file,name,{keep:o.keep,names:o.names?read(path.resolve(o.names)):{}});
   const data=load(file);
-  if(cmd==='list')return Object.entries(data.accounts).map(([account,a])=>({account,machine:a.machine.id,driveBlocked:!!a.bridge.driveBlocked,primary:a.primary,legacyMultiSite:Object.keys(a.sites).length>1,...(Object.keys(a.sites).length>1?{splitCommand:`split ${account} --keep SITE`}:{}),sites:Object.entries(a.sites).map(([site,s])=>({site,probe:!!s.identity,probeKind:s.identity?.kind||null,...identityAssurance(s.identity),identityRecorded:!!s.identity?.recordedAt,identityEnrolled:s.identity?.kind!=='generic'&&!!s.identity&&Object.keys(s.identity.expected||{}).some(k=>!['authenticated','site'].includes(k)),...(s.identity?.kind==='generic'?{markerEnrolled:!!s.identity.expected?.marker}:{})})),...(a.google?{google:{person:a.google.person,identity:a.google.expectedEmail,project:a.google.project,services:a.google.services}}:{}),permissions:a.permissions}));
+  if(cmd==='list')return Object.entries(data.accounts).map(([account,a])=>({account,machine:a.machine.id,driveBlocked:!!a.bridge.driveBlocked,primary:a.primary,legacyMultiSite:needsSplit(a),...(needsSplit(a)?{splitCommand:`split ${account} --keep SITE`}:{}),sites:Object.entries(a.sites).map(([site,s])=>({site,probe:!!s.identity,probeKind:s.identity?.kind||null,...identityAssurance(s.identity),identityRecorded:!!s.identity?.recordedAt,identityEnrolled:s.identity?.kind!=='generic'&&!!s.identity&&Object.keys(s.identity.expected||{}).some(k=>!['authenticated','site'].includes(k)),...(s.identity?.kind==='generic'?{markerEnrolled:!!s.identity.expected?.marker}:{})})),...(a.google?{google:{person:a.google.person,identity:a.google.expectedEmail,project:a.google.project,services:a.google.services}}:{}),permissions:a.permissions}));
   if(cmd==='overview')return (await import('../browser/ext-bridge.mjs')).command(file,'state');
   if(cmd==='bridge-up-all'){const result=[];for(const [login,a]of Object.entries(data.accounts))if(local(a.machine))result.push(await main(['--accounts',file,'bridge',login]));return result;}
   const a=accountAt(data,name);insist(!onHolder||(local(a.machine)&&machineId()===onHolder),'WRONG_MACHINE','Delegated command reached the wrong stable machine; correct SSH routing');

@@ -190,13 +190,25 @@ export async function optIn(file,name,{ask,guard=privateHolder}) {
   const a=accountAt(load(file),name);insist(local(a.machine),'HUMAN_STEP_ON_HOLDER','Opt in on the account holder');drivable(a);
   await guard(a.machine);
   insist(await decide(file,'setup.google',ask,`${explanation.api}\n${explanation.permissions}`)==='yes','GOOGLE_DECLINED','Google API control is declined or deferred; change the saved ruling to opt in');
-  if(a.google)return {account:name,optedIn:true,reused:true};
+  if(a.google){
+    await mutate(file,name,fresh=>ensureGoogleIdentitySite(fresh));
+    return {account:name,optedIn:true,reused:true,next:`open ${name} --site google`};
+  }
   let r=load(file).rulings,person=r.person?.value,expectedEmail=r[`email.${name}`]?.value;
   if(!person){person=await ask('Choose your one-word person key (saved for all your accounts): ');await remember(file,'person',person);}
   if(!expectedEmail){expectedEmail=await ask('Which Google email should this account prove? ');await remember(file,`email.${name}`,expectedEmail);}
   insist(!Object.entries(load(file).accounts).some(([key,other])=>key!==name&&other.google?.expectedEmail.toLowerCase()===expectedEmail.toLowerCase()),'GOOGLE_CONFLICT','This Google account already has a holder; transfer it rather than create another login');
-  await mutate(file,name,(fresh,data)=>{fresh.google={person,expectedEmail,optIn:{userWords:data.rulings['setup.google'].value,at:data.rulings['setup.google'].at},services:{}};});
-  return {account:name,optedIn:true,next:'google console: use your own project, Desktop client and Production audience; then google project'};
+  await mutate(file,name,(fresh,data)=>{fresh.google={person,expectedEmail,optIn:{userWords:data.rulings['setup.google'].value,at:data.rulings['setup.google'].at},services:{}};ensureGoogleIdentitySite(fresh);});
+  return {account:name,optedIn:true,next:`open ${name} --site google`};
+}
+function ensureGoogleIdentitySite(a){
+  const expected=a.google.expectedEmail;
+  const site=a.sites.google;
+  if(site){
+    insist(site.identity?.kind==='google'&&site.identity.url==='https://myaccount.google.com/'&&site.identity.expected?.name?.toLowerCase()===expected.toLowerCase(),'GOOGLE_BROWSER_IDENTITY','The existing Google identity site does not match this account');
+    return;
+  }
+  a.sites.google={signInUrl:'https://accounts.google.com/',identity:{kind:'google',url:'https://myaccount.google.com/',expected:{name:expected}}};
 }
 export async function configureProject(file,name,a,{project,clientFile,ask},{root=HOME,guard=privateHolder,rotate=false}={}) {
   enabled(file);

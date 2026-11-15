@@ -37,11 +37,20 @@ test('setup interview offers sites and API up front, one question at a time, wit
 });
 test('only the human opt-in records their words; the account format rejects secrets, invalid scope syntax and project conflicts',async t=>{
   const {file,a,dir}=config(t),answers=['yes','sample-person','sample@example.invalid'];
-  await optIn(file,'work',{ask:async()=>answers.shift(),guard:async()=>{}});assert.equal(read(file).accounts.work.google.optIn.userWords,'yes');
+  const result=await optIn(file,'work',{ask:async()=>answers.shift(),guard:async()=>{}});assert.equal(read(file).accounts.work.google.optIn.userWords,'yes');
+  assert.equal(result.next,'open work --site google');
+  const googleSite=read(file).accounts.work.sites.google;
+  assert.deepEqual(googleSite,{signInUrl:'https://accounts.google.com/',identity:{kind:'google',url:'https://myaccount.google.com/',expected:{name:'sample@example.invalid'}}});
+  assert.equal((await main(['--accounts',file,'list']))[0].legacyMultiSite,false);
+  assert.equal((await optIn(file,'work',{ask:yes,guard:async()=>{}})).reused,true);
+  assert.deepEqual(read(file).accounts.work.sites.google,googleSite);
   const data=read(file);data.accounts.work.google.token='secret';assert.throws(()=>validate(data),{code:'GOOGLE_FORMAT'});delete data.accounts.work.google.token;
   const g=metadata();g.services.calendar={api:'calendar-json.googleapis.com',scopes:['--full']};data.accounts.work.google=g;assert.throws(()=>validate(data),{code:'GOOGLE_FORMAT'});
   data.accounts.work.google=metadata();const b=account(dir,'other');b.google={...metadata(),expectedEmail:'second@example.invalid',project:'a-different-project'};data.accounts.other=b;assert.throws(()=>validate(data),{code:'GOOGLE_CONFLICT'});
   const no=config(t);await assert.rejects(optIn(no.file,'work',{ask:async()=>'',guard:async()=>{}}),{code:'RULING_REQUIRED'});assert.equal(read(no.file).accounts.work.google,undefined);
+  const conflict=config(t);conflict.a.sites.google={signInUrl:'https://accounts.google.com/',identity:{kind:'google',url:'https://myaccount.google.com/',expected:{name:'someone-else@example.invalid'}}};atomicJSON(conflict.file,{version:1,accounts:{work:conflict.a}});
+  const conflictAnswers=['yes','sample-person','sample@example.invalid'];await assert.rejects(optIn(conflict.file,'work',{ask:async()=>conflictAnswers.shift(),guard:async()=>{}}),{code:'GOOGLE_BROWSER_IDENTITY'});
+  assert.equal(read(conflict.file).accounts.work.google,undefined);
 });
 test('Google and browser permissions stay separate; omitted resource never widens API grants; proposed word is not written',async t=>{
   const {file,a}=fixture(t,{connected:true});

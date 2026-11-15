@@ -21,6 +21,8 @@ ruling setup.google --value no
 ruling setup.google --value yes
 ruling setup.google --value ask
 google opt-in ACCOUNT
+open ACCOUNT --site google
+sign-in-status ACCOUNT --site google
 google console ACCOUNT --step project
 google console ACCOUNT --finish
 google project ACCOUNT --project YOUR_OWN_PROJECT
@@ -41,6 +43,10 @@ grant ACCOUNT --via google --site calendar --action edit --resource primary
 ruling instructions.ACCOUNT.calendar --value no
 propose ACCOUNT --via google --site calendar
 ```
+
+`google opt-in` also registers a Google identity check in the account's existing
+browser profile. Open the `google` site and sign in there before starting Console
+setup. The recorded Google email must match the email chosen during opt-in.
 
 # Saved rulings and changes
 
