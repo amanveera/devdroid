@@ -114,6 +114,9 @@ ambiguous or unsupported account controls refuse.
 
 The person creates an initial project in their own window. The project step cannot
 mutate before the login identity is recorded and refuses a second project once one is recorded.
+If Google redirects the project page, the tool shows that page as an unverified
+human handoff without reading its contents. The person checks the account and
+creates the project there, then finishes the handoff.
 Project-specific steps require the recorded project on the page, plus the intended
 authuser. The agent uses supported accessible names, never coordinates. A different
 project, account, private authorization URL or unknown wizard path refuses.

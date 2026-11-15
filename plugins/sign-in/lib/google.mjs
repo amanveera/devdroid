@@ -427,7 +427,12 @@ export async function consoleStep(file,name,a,{step,api,field,value,click:label}
       insist(!current||![...current.searchParams.keys()].some(k=>/secret|token|password|authorization|^code$|^state$/i.test(k)),'GOOGLE_CONSOLE_LOCATION','Console location contains private authorization data; no page content was read');
       insist(current?.origin===url.origin&&knownPath&&(!project||current.searchParams.get('project')===project)&&current.searchParams.get('authuser')===a.google.expectedEmail,'GOOGLE_CONSOLE_LOCATION','Console tab is not on this account, project and setup step; open and inspect it first');
     };
-    await checkLocation();
+    try{await checkLocation();}catch(e){
+      if(e.code!=='GOOGLE_CONSOLE_LOCATION'||step!=='project')throw e;
+      await (d.launch||launch)(file,name,'show');
+      setSessionState(a,session,{humanActive:true,pendingAction:null},d.root);humanLease=[file,name,a,session,proof.contextId,d.root];
+      return {step,unverifiedLocation:true,gate:'Google redirected. Inspect the shown page yourself, then finish this handoff; no Console content was read or action taken.'};
+    }
     currentGoogle(file,name,a);
     if(label||field){
       setSessionState(a,session,{pendingAction:{step,kind:label?'click':'fill'}},d.root);

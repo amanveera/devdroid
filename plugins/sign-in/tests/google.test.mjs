@@ -157,6 +157,12 @@ test('console adapter uses the verified account, named elements, and stops at hu
   await (await import('../lib/human-lease.mjs')).finishHuman(f.file,'work',f.a,f.dir,{park:async()=>{}});
   await consoleStep(f.file,'work',f.a,{step:'consent'},deps);await (await import('../lib/human-lease.mjs')).finishHuman(f.file,'work',f.a,f.dir,{park:async()=>{}});location=location.replace('sample-owned-project','another-project');await assert.rejects(consoleStep(f.file,'work',f.a,{step:'consent',field:'App name',value:'my-access'},deps),{code:'GOOGLE_CONSOLE_LOCATION'});
 });
+test('Google project redirects become a human handoff without reading or changing Console data',async t=>{
+  const f=fixture(t);delete f.a.google.project;delete f.a.google.productionConfirmedAt;atomicJSON(f.file,{version:1,accounts:{work:f.a}});
+  let shown=0,handedOff=0,reads=0;const location='https://console.cloud.google.com/projectcreate?authuser=0&pli=1';
+  const result=await consoleStep(f.file,'work',f.a,{step:'project'},{root:f.dir,guard:async()=>{},check:async()=>({contextId:'proved-context'}),navigate:async()=>{},launch:async()=>{shown++;},handoff:async()=>{handedOff++;},oc:async(a,args)=>{if(args.includes('get'))return location;reads++;throw Error('Console content must stay private');}});
+  assert.equal(result.unverifiedLocation,true);assert.equal(shown,1);assert.equal(handedOff,1);assert.equal(reads,0);assert.equal(read(f.file).accounts.work.google.project,undefined);
+});
 test('API reads go through isolated gws after identity/scope proof and cannot enter auth or helper/write commands',async t=>{
   const f=fixture(t,{connected:true}),calls=[];const deps={root:f.dir,guard:async()=>{},install:async()=>'/fake/gws',execute:async(bin,args)=>{calls.push(args);return {stdout:JSON.stringify(args[0]==='auth'?report():{items:[]})};}};
   const payload=await readGoogle(f.file,'work',f.a,'calendar',['events','list','--params','{"calendarId":"primary"}'],deps);assert.equal(payload.trust,'untrusted');assert.deepEqual(payload.data,{items:[]});assert.deepEqual(calls[0],['auth','status']);assert.equal(calls[1][0],'calendar');
