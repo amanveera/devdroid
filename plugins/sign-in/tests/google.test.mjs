@@ -157,11 +157,21 @@ test('console adapter uses the verified account, named elements, and stops at hu
   await (await import('../lib/human-lease.mjs')).finishHuman(f.file,'work',f.a,f.dir,{park:async()=>{}});
   await consoleStep(f.file,'work',f.a,{step:'consent'},deps);await (await import('../lib/human-lease.mjs')).finishHuman(f.file,'work',f.a,f.dir,{park:async()=>{}});location=location.replace('sample-owned-project','another-project');await assert.rejects(consoleStep(f.file,'work',f.a,{step:'consent',field:'App name',value:'my-access'},deps),{code:'GOOGLE_CONSOLE_LOCATION'});
 });
-test('Google project redirects become a human handoff without reading or changing Console data',async t=>{
+test('Google project redirects to another account become a human handoff without reading or changing Console data',async t=>{
   const f=fixture(t);delete f.a.google.project;delete f.a.google.productionConfirmedAt;atomicJSON(f.file,{version:1,accounts:{work:f.a}});
-  let shown=0,handedOff=0,reads=0;const location='https://console.cloud.google.com/projectcreate?authuser=0&pli=1';
+  let shown=0,handedOff=0,reads=0;const location='https://console.cloud.google.com/projectcreate?authuser=1&pli=1';
   const result=await consoleStep(f.file,'work',f.a,{step:'project'},{root:f.dir,guard:async()=>{},check:async()=>({contextId:'proved-context'}),navigate:async()=>{},launch:async()=>{shown++;},handoff:async()=>{handedOff++;},oc:async(a,args)=>{if(args.includes('get'))return location;reads++;throw Error('Console content must stay private');}});
   assert.equal(result.unverifiedLocation,true);assert.equal(shown,1);assert.equal(handedOff,1);assert.equal(reads,0);assert.equal(read(f.file).accounts.work.google.project,undefined);
+});
+test('Console accepts Googles index for the verified default account',async t=>{
+  const f=fixture(t);let location;
+  const result=await consoleStep(f.file,'work',f.a,{step:'api',api:'calendar-json.googleapis.com'},{root:f.dir,guard:async()=>{},check:async()=>({contextId:'proved-context'}),navigate:async(a,args,url)=>{location=url.replace(encodeURIComponent(f.a.google.expectedEmail),'0')+'&pli=1';},oc:async(a,args)=>args.includes('get')?location:{url:location}});
+  assert.equal(result.content.data.url,location);
+});
+test('a failed Console page summary preserves the human consent handoff',async t=>{
+  const f=fixture(t);let location,shown=0,handedOff=0;
+  const result=await consoleStep(f.file,'work',f.a,{step:'consent'},{root:f.dir,guard:async()=>{},check:async()=>({contextId:'proved-context'}),navigate:async(a,args,url)=>{location=url;},launch:async()=>{shown++;},handoff:async()=>{handedOff++;},oc:async(a,args)=>{if(args.includes('get'))return location;throw Error('Google page getter failed');}});
+  assert.equal(result.contentUnavailable,true);assert.equal(shown,1);assert.equal(handedOff,1);
 });
 test('API reads go through isolated gws after identity/scope proof and cannot enter auth or helper/write commands',async t=>{
   const f=fixture(t,{connected:true}),calls=[];const deps={root:f.dir,guard:async()=>{},install:async()=>'/fake/gws',execute:async(bin,args)=>{calls.push(args);return {stdout:JSON.stringify(args[0]==='auth'?report():{items:[]})};}};
