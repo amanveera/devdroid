@@ -291,6 +291,32 @@ export async function readGoogle(file,name,a,service,args,deps={}) {
     currentGoogle(file,name,a);insist(JSON.stringify(load(file).rulings)===rules,'GOOGLE_ACCOUNT_CHANGED','Saved rulings changed during identity proof');const result=await gwsJSON(bin,command,env,d.execute);currentGoogle(file,name,a);insist(JSON.stringify(load(file).rulings)===rules,'GOOGLE_ACCOUNT_CHANGED','Saved rulings changed during the operation');return untrusted(result,'google-api');
   });
 }
+export async function emailGoogle(file,name,a,{action,to,subject,body,confirmSend=false},deps={}) {
+  enabled(file);currentGoogle(file,name,a);drivable(a);
+  insist(local(a.machine),'HUMAN_STEP_ON_HOLDER','Run Gmail writes on the account holder machine');
+  insist(['draft','send'].includes(action),'EMAIL_ACTION','Choose draft or send');
+  insist(action!=='send'||confirmSend,'EMAIL_SEND_CONFIRMATION','Sending needs an explicit current request and confirmation');
+  insist(email(to)&&to===to.trim(),'EMAIL_RECIPIENT','Supply one complete recipient email address');
+  insist(typeof subject==='string'&&subject.trim()===subject&&subject.length>0&&subject.length<=998&&!/[\r\n]/.test(subject),'EMAIL_SUBJECT','Subject must be one non-empty line of at most 998 characters');
+  insist(typeof body==='string'&&body.length>0&&body.length<=1024*1024&&!body.includes('\0'),'EMAIL_BODY','Body must be non-empty UTF-8 text no larger than 1 MiB');
+  const service=googleService(a,'gmail');
+  insist(service.api==='gmail.googleapis.com','GOOGLE_API_MISMATCH','Gmail must use gmail.googleapis.com');
+  insist(service.scopes.includes('https://www.googleapis.com/auth/gmail.compose'),'GOOGLE_SCOPE_MISSING','Connect Gmail with the gmail.compose scope before drafting or sending');
+  const d={root:HOME,guard:privateHolder,install:installGws,execute:run,...deps};
+  await d.guard(a.machine);
+  const rules=await servicePolicy(file,name,a,'gmail',d.ask);
+  const home=googleHome(file,name,a,d.root);
+  return locked(path.join(home,'operation'),async()=>{
+    const bin=await d.install({root:d.root}),env=isolatedEnv(home);
+    judgeGoogle(a,'gmail',await gwsJSON(bin,['auth','status'],env,d.execute));
+    currentGoogle(file,name,a);insist(JSON.stringify(load(file).rulings)===rules,'GOOGLE_ACCOUNT_CHANGED','Saved Google permissions changed before the email operation');
+    const args=['gmail','+send','--to',to,'--subject',subject,'--body',body,...(action==='draft'?['--draft']:[])];
+    try { await privately(()=>d.execute(bin,args,{env})); }
+    catch(e) { throw new Refusal('EMAIL_OUTCOME_UNRESOLVED','Gmail did not confirm the operation. Check Drafts or Sent before retrying to avoid duplicates.'); }
+    currentGoogle(file,name,a);insist(JSON.stringify(load(file).rulings)===rules,'GOOGLE_ACCOUNT_CHANGED','Saved Google permissions changed during the email operation');
+    return {account:name,service:'gmail',action,recipient:to,subject,status:action==='draft'?'draft-saved':'sent'};
+  });
+}
 export function oauthURL(value,clientID,scopes) {
   const url=new URL(value),redirect=new URL(url.searchParams.get('redirect_uri'));
   insist(url.origin==='https://accounts.google.com' && ['/o/oauth2/auth','/o/oauth2/v2/auth'].includes(url.pathname)&&url.searchParams.get('client_id')===clientID&&redirect.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(redirect.hostname)&&!redirect.username&&!redirect.password&&redirect.port,'GOOGLE_OAUTH_URL','Unexpected OAuth endpoint, client or loopback redirect');

@@ -40,11 +40,19 @@ google connect ACCOUNT --service gmail --api gmail.googleapis.com --scope https:
 google connect ACCOUNT --service gmail --api gmail.googleapis.com --scope https://www.googleapis.com/auth/gmail.compose
 google check ACCOUNT --service calendar
 google read ACCOUNT --service calendar -- events list --params '{"calendarId":"primary"}'
+google email ACCOUNT --action draft --to recipient@example.com --subject 'Subject' --body-file /private/tmp/message.txt
+google email ACCOUNT --action send --to recipient@example.com --subject 'Subject' --body-file /private/tmp/message.txt --confirm-send
 permission ACCOUNT --via google --site calendar --action edit --resource primary
 grant ACCOUNT --via google --site calendar --action edit --resource primary
 ruling instructions.ACCOUNT.calendar --value no
 propose ACCOUNT --via google --site calendar
 ```
+
+For Gmail writes, use a private UTF-8 body file with mode `0600` (maximum 1 MiB).
+The user must explicitly request sending the exact message; show recipient, subject
+and full body in chat before calling the send command. A draft request only creates
+a draft. The command reports an unresolved outcome rather than retrying a send that
+may already have reached Gmail. See the [Google Workspace setup guide](../../../../../docs/google-workspace-setup.md).
 
 `google opt-in` also registers a Google identity check in the account's existing
 browser profile. Open the `google` site and sign in there before starting Console

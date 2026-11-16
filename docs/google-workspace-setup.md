@@ -81,12 +81,30 @@ node scripts/sign-in.mjs google connect ACCOUNT \
 ```
 
 `gmail.readonly` permits reading messages and settings. `gmail.compose` permits
-managing drafts and sending messages. A successful OAuth check proves the account
-and scopes are present; it does not prove that a particular message was drafted or
-sent. The current `google read` command accepts only API `get` and `list` methods.
-Do not use it as a write interface. A future write interface should identify the
-recipient and content, show the draft for review, and require clear authorization
-before sending.
+managing drafts and sending messages. `google read` remains read-only and accepts
+only API `get` and `list` methods. Gmail writing uses the separate command below,
+which calls the pinned Google Workspace CLI Gmail helper.
+
+Create a private UTF-8 body file with mode `0600`, then save a Gmail draft:
+
+```sh
+node scripts/sign-in.mjs google email ACCOUNT --action draft \
+  --to recipient@example.com --subject 'Subject' --body-file /private/tmp/message.txt
+```
+
+To send, show the recipient, subject and complete body to the user in chat first.
+Only after a current, explicit request to send that message, run:
+
+```sh
+node scripts/sign-in.mjs google email ACCOUNT --action send \
+  --to recipient@example.com --subject 'Subject' --body-file /private/tmp/message.txt \
+  --confirm-send
+```
+
+The command accepts one recipient and a private regular body file up to 1 MiB.
+Use `--action draft` when asked to draft; never send a draft request. If the command
+cannot confirm the outcome, check Gmail Sent or Drafts before retrying. Gmail API
+draft creation and sending require the `gmail.compose` scope ([Gmail API draft guide](https://developers.google.com/workspace/gmail/api/guides/drafts), [send method](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages.send)).
 
 Verify the connection and perform a harmless read:
 
