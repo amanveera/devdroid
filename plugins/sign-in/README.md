@@ -32,6 +32,8 @@ feature, with its own consent and scope choices. Setup asks what you want and
 remembers approvals, refusals and ask-every-time preferences.
 The [skill](skills/sign-in/SKILL.md), [command reference](skills/sign-in/references/operations.md)
 and [Google Workspace guide](skills/sign-in/references/google.md) explain these choices.
+For a hands-on project setup walkthrough and browser troubleshooting, see the
+repository's [Google Workspace setup guide](../../docs/google-workspace-setup.md).
 
 ## Technical details
 

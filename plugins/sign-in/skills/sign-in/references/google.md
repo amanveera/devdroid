@@ -36,6 +36,8 @@ google console ACCOUNT --step production
 google console ACCOUNT --finish
 google project ACCOUNT --project YOUR_OWN_PROJECT --client-file /private/download.json --audience production
 google connect ACCOUNT --service calendar --api calendar-json.googleapis.com --scope https://www.googleapis.com/auth/calendar.events.readonly
+google connect ACCOUNT --service gmail --api gmail.googleapis.com --scope https://www.googleapis.com/auth/gmail.readonly
+google connect ACCOUNT --service gmail --api gmail.googleapis.com --scope https://www.googleapis.com/auth/gmail.compose
 google check ACCOUNT --service calendar
 google read ACCOUNT --service calendar -- events list --params '{"calendarId":"primary"}'
 permission ACCOUNT --via google --site calendar --action edit --resource primary
@@ -56,6 +58,10 @@ of asserting Production. Google authorization for scopes beyond basic identity c
 expire after seven days; check and reconnect when needed. Production remains the
 durable choice and requires Google's published-app requirements. The person must
 confirm the actual audience in their terminal; agents do not publish or add users.
+
+For an end-to-end setup walkthrough, including the Desktop client, Testing audience,
+Gmail scopes and browser handoff troubleshooting, see the repository's
+[Google Workspace setup guide](../../../../../docs/google-workspace-setup.md).
 
 # Saved rulings and changes
 
