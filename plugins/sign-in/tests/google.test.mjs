@@ -146,6 +146,7 @@ test('connect preserves the human tab until callback, resets only owned stale ca
   const f=fixture(t),{deps,calls,configDir}=connectionDeps(f);fs.writeFileSync(path.join(configDir,'token_cache.json'),'old scopes and fake token',{mode:0o600});
   deps.execute=async()=>{assert.equal(fs.existsSync(path.join(configDir,'token_cache.json')),false);assert.equal(calls.some(c=>c.callback),true);return {stdout:JSON.stringify(report())};};
   const result=await connect(f.file,'work',f.a,{service:'calendar',api:'calendar-json.googleapis.com',scope},deps);assert.equal(result.status,'signed-in');assert.equal(read(f.file).accounts.work.google.services.calendar.scopes[0],scope);
+  assert.ok(calls.some(c=>Array.isArray(c)&&c.includes('--window')&&c.includes('foreground')));
   assert.equal(calls.filter(c=>Array.isArray(c)&&c.at(-1)==='close').length,1);assert.deepEqual(calls.filter(c=>c.window).map(c=>c.window),['show','park']);assert.equal(fs.readdirSync(configDir).filter(v=>v.startsWith('token_cache.json.before-')).length,1);
   assert.equal(JSON.stringify(result).includes('private OAuth'),false);
 });
@@ -158,6 +159,7 @@ test('console adapter uses the verified account, named elements, and stops at hu
   const f=fixture(t),calls=[];let location;const deps={root:f.dir,launch:async()=>{},handoff:async()=>{},guard:async()=>{},check:async()=>({contextId:'proved-context'}),navigate:async(a,args,url,ctx)=>{location=url;calls.push({url,ctx});},oc:async(a,args,ctx)=>{calls.push({args,ctx});return args.includes('get')?location:{url:location,snapshot:'fake console state'};}};
   const state=await consoleStep(f.file,'work',f.a,{step:'api',api:'calendar-json.googleapis.com'},deps);assert.equal(state.content.trust,'untrusted');assert.equal(state.content.data.snapshot,'fake console state');assert.equal(calls[0].ctx,'proved-context');
   await consoleStep(f.file,'work',f.a,{step:'consent'},deps);
+  assert.ok(calls.some(c=>Array.isArray(c.args)&&c.args.includes('--window')&&c.args.includes('foreground')));
   await (await import('../lib/human-lease.mjs')).finishHuman(f.file,'work',f.a,f.dir,{park:async()=>{}});
   await consoleStep(f.file,'work',f.a,{step:'consent',field:'App name',value:'my-access'},deps);assert.ok(calls.some(c=>c.args?.includes('--name')&&c.args?.includes('App name')));
   for(const step of ['production','iam','desktop'])await assert.rejects(consoleStep(f.file,'work',f.a,{step,click:step==='desktop'?'Download JSON':'Confirm'},deps),{code:'GOOGLE_HUMAN_GATE'});

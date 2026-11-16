@@ -366,7 +366,7 @@ export async function connect(file,name,a,{service,api,scope,'replace-scope':rep
     const gsite=Object.entries(a.sites).find(([,s])=>s.identity?.kind==='google'&&s.identity.expected?.name?.toLowerCase()===a.google.expectedEmail.toLowerCase());
     insist(gsite,'GOOGLE_BROWSER_IDENTITY','Enroll a Google browser identity matching this API account before consent');
     const proof=await d.check(file,name,a,gsite[0]),bin=await d.install({root:d.root}),env=isolatedEnv(home),client=read(path.join(env.GOOGLE_WORKSPACE_CLI_CONFIG_DIR,'client_secret.json')).installed;
-    const session=`oauth-${name}-${crypto.randomUUID()}`,args=['browser','--session',session,'--window','background'];let opened=false,success=false;
+    const session=`oauth-${name}-${crypto.randomUUID()}`,args=['browser','--session',session,'--window','foreground'];let opened=false,success=false;
     protectSession(a,session,'oauth',d.root);
     const saved=new Map();for(const leaf of ['credentials.enc','credentials.json','.encryption_key','token_cache.json']){const p=path.join(env.GOOGLE_WORKSPACE_CLI_CONFIG_DIR,leaf);if(fs.existsSync(p)){privateStat(p,false);saved.set(leaf,fs.readFileSync(p));}}
     try {
@@ -427,7 +427,7 @@ export async function consoleStep(file,name,a,{step,api,field,value,click:label}
   let humanLease;
   const result=await stateLocked(bridgeOperation(a),async()=>{
     currentGoogle(file,name,a);
-    const session=`google-console-${name}`,args=['browser','--session',session,'--window','background'];
+    const session=`google-console-${name}`,args=['browser','--session',session,'--window',['project','consent','desktop','production','iam'].includes(step)?'foreground':'background'];
     insist(!sessionState(a,session,d.root).pendingAction&&!sessionState(a,session,d.root).humanActive,'GOOGLE_CONSOLE_PENDING','Finish the existing human handoff before another Console action');
     setSessionState(a,session,{sourceFile:canonical(file),sourceAccount:name,handoffFile:null},d.root);
     if(step==='desktop')protectSession(a,`google-console-${name}`,'desktop',d.root);
