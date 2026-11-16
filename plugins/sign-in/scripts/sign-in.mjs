@@ -33,7 +33,7 @@ export const HELP=`sign-in [--accounts FILE] [--on-holder EXPECTED_ID] COMMAND
   google explain
   google opt-in ACCOUNT (human terminal; can be added after setup)
     Then open ACCOUNT --site google to verify the intended Google identity.
-  google project ACCOUNT --project OWN_PROJECT [--client-file PRIVATE_DOWNLOAD] (human)
+  google project ACCOUNT --project OWN_PROJECT [--client-file PRIVATE_DOWNLOAD --audience production|testing] (human)
   google console ACCOUNT --step project|api|consent|desktop|production|iam [--api API]
     [--field ACCESSIBLE_NAME --value TEXT | --click ACCESSIBLE_NAME]
   google connect ACCOUNT --service WORD --api API --scope EXACT_SCOPE [--replace-scope OLD_SCOPE] (human)
@@ -43,7 +43,7 @@ export const HELP=`sign-in [--accounts FILE] [--on-holder EXPECTED_ID] COMMAND
   doctor
   accounts-upgrade
   ruling KEY [--value ANSWER] [--remove] (human terminal; yes/no/ask or a fact)
-  google change ACCOUNT [--email EMAIL | --client-file PRIVATE_DOWNLOAD | --block admin|unknown|clear]
+  google change ACCOUNT [--email EMAIL | --client-file PRIVATE_DOWNLOAD [--audience production|testing] | --block admin|unknown|clear]
   google revoke ACCOUNT [--service WORD [--scope SCOPE | --action ACTION --resource EXACT_RESOURCE]]
   google sync ACCOUNT (controller: copy nonsecret metadata from its proven holder)
   google console ACCOUNT --finish (human: complete handoff and park)
@@ -59,7 +59,7 @@ export function parse(argv){
     'sign-in-status':[1,['site']],'cancel-sign-in':[1,['site']],drive:[1,['site','policy']],show:[1,[]],park:[1,[]],wake:[1,[]],'bridge-down':[1,[]],
     create:[1,['from']],'add-site':[-1,['site','origin','private-machine']],split:[1,['keep','names']],grant:[1,['site','action','resource','via']],revoke:[1,['site','action','resource','via']],enroll:[1,['site']],propose:[1,['site','via']],permission:[1,['site','action','resource','via']],setup:[0,['accounts-from','sites','google']],doctor:[0,[]],
     'accounts-upgrade':[0,[]],ruling:[1,['value','remove']],
-    google:[args[0]==='explain'?1:2,['service','api','scope','replace-scope','project','client-file','step','field','value','click','expect','email','block','action','resource','finish']],
+    google:[args[0]==='explain'?1:2,['service','api','scope','replace-scope','project','client-file','audience','step','field','value','click','expect','email','block','action','resource','finish']],
   };
   insist(definitions[cmd],'USAGE',HELP);const [count,allowed]=definitions[cmd],values=[],options={};let rest=[];
   while(args.length){const item=args.shift();if(item==='--'){insist(cmd==='drive'||cmd==='google','USAGE','Only drive and google read take trailing arguments');rest=args.splice(0);break;}
@@ -68,7 +68,7 @@ export function parse(argv){
   }
   insist(count===-1?values.length<=1:values.length===count,'USAGE',HELP);
   if(cmd==='google'){
-    const allowedRoutes={explain:[], 'opt-in':[],project:['project','client-file'],console:['step','api','field','value','click','expect','finish'],connect:['service','api','scope','replace-scope'],check:['service','expect'],read:['service','expect'],change:['email','client-file','block'],revoke:['service','scope','action','resource'],metadata:[],sync:[]};
+    const allowedRoutes={explain:[], 'opt-in':[],project:['project','client-file','audience'],console:['step','api','field','value','click','expect','finish'],connect:['service','api','scope','replace-scope'],check:['service','expect'],read:['service','expect'],change:['email','client-file','audience','block'],revoke:['service','scope','action','resource'],metadata:[],sync:[]};
     insist(Object.hasOwn(allowedRoutes,values[0])&&Object.keys(options).every(k=>allowedRoutes[values[0]].includes(k))&&(!rest.length||values[0]==='read'),'USAGE','Unknown Google route or option');
   }
   return {cmd,file:accountsPath(file),name:cmd==='google'?values[1]:values[0],route:cmd==='google'?values[0]:undefined,options,onHolder,rest};
@@ -117,7 +117,7 @@ async function dispatch(argv){
     insist(!o.expect||/^[a-f0-9]{64}$/.test(o.expect)&&o.expect===expected,'GOOGLE_REMOTE_CONTRACT','Controller and holder disagree about the Google account, project or scopes; no operation was performed');
     const reply=result=>o.expect?{googleContract:expected,result}:result;
     if(route==='opt-in')return human(ask=>g.optIn(file,name,{ask}));
-    if(route==='project')return human(ask=>g.configureProject(file,name,a,{project:o.project,clientFile:o['client-file'],ask}));
+    if(route==='project')return human(ask=>g.configureProject(file,name,a,{project:o.project,clientFile:o['client-file'],audience:o.audience,ask}));
     if(route==='metadata')return g.googleMetadata(file,name,a);
     if(route==='sync')return g.syncGoogle(file,name,a);
     if(route==='console'&&o.finish)return human(async()=>{insist(local(a.machine),'HUMAN_STEP_ON_HOLDER','Finish on the holder');return (await import('../lib/human-lease.mjs')).finishHuman(file,name,a);});

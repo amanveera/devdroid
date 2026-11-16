@@ -24,12 +24,17 @@ export const explanation = {
 };
 const now = () => new Date().toISOString();
 function enabled(file){insist(load(file).rulings['setup.google']?.value!=='no','GOOGLE_DECLINED','Google control is declined; only the person can change that saved ruling');}
+function audienceConfirmed(r,g){
+ if(g.productionConfirmedAt&&!g.testingConfirmedAt)return r[`production.${g.person}`]?.value===g.project;
+ if(g.testingConfirmedAt&&!g.productionConfirmedAt)return r[`testing.${g.person}`]?.value===g.project;
+ return false;
+}
 function currentGoogle(file,name,a){const data=load(file);enabled(file);insist(googleContract(name,a)===googleContract(name,accountAt(data,name)),'GOOGLE_ACCOUNT_CHANGED','Account metadata changed; reload it before using this login');if(a.google){insist(!data.rulings[`email.${name}`]||data.rulings[`email.${name}`].value.toLowerCase()===a.google.expectedEmail.toLowerCase(),'GOOGLE_ACCOUNT_CHANGED','The saved email changed; update the login through google change');if(a.google.project)insist(data.rulings[`project.${a.google.person}`]?.value===a.google.project,'GOOGLE_PROJECT_MISMATCH','The saved ownership ruling no longer matches this client project');}}
 function serviceRules(file,name,a,service){
  currentGoogle(file,name,a);const r=load(file).rulings,g=a.google,s=g.services[service];enabled(file);
  insist(!['admin','unknown'].includes(r[`blocked.${name}`]?.value),'GOOGLE_BLOCK_REVIEW_REQUIRED','The person must review the saved blocked outcome');
  insist(!r[`email.${name}`]||r[`email.${name}`].value.toLowerCase()===g.expectedEmail.toLowerCase(),'GOOGLE_ACCOUNT_CHANGED','The saved email changed; use google change before accessing this login');
- insist(r[`production.${g.person}`]?.value===g.project,'GOOGLE_PROJECT_CONFIRMATION','The current Production attestation is missing or changed; the person must confirm it through google project');
+ insist(audienceConfirmed(r,g),'GOOGLE_PROJECT_CONFIRMATION','The current audience attestation is missing or changed; the person must confirm it through google project');
  insist(r[`service.${name}.${service}`]?.value!=='no','GOOGLE_SERVICE_CONSENT','The person declined this service');
  const sr=r[`scope.${name}.${service}`];insist(!scopeDenied(sr,s.scopes),'GOOGLE_SCOPE_REVOKED','A recorded scope was revoked; change or revoke the connection before use');
  return r;
@@ -42,7 +47,7 @@ async function servicePolicy(file,name,a,service,ask){
 }
 export function googleContract(name,a) {
   const g=a.google;
-  return crypto.createHash('sha256').update(JSON.stringify({protocol:'google-rulings-v1',account:name,holder:a.machine.id,bridge:{name:a.bridge.name,port:a.bridge.port,profileDir:path.resolve(a.bridge.profileDir),driveBlocked:!!a.bridge.driveBlocked},person:g?.person,email:g?.expectedEmail?.toLowerCase(),project:g?.project,production:g?.productionConfirmedAt,optIn:{userWords:g?.optIn?.userWords,at:g?.optIn?.at},services:Object.entries(g?.services||{}).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([name,s])=>({name,api:s.api,scopes:[...s.scopes].sort(),connectedAt:s.connectedAt}))})).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify({protocol:'google-rulings-v1',account:name,holder:a.machine.id,bridge:{name:a.bridge.name,port:a.bridge.port,profileDir:path.resolve(a.bridge.profileDir),driveBlocked:!!a.bridge.driveBlocked},person:g?.person,email:g?.expectedEmail?.toLowerCase(),project:g?.project,production:g?.productionConfirmedAt,testing:g?.testingConfirmedAt,optIn:{userWords:g?.optIn?.userWords,at:g?.optIn?.at},services:Object.entries(g?.services||{}).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([name,s])=>({name,api:s.api,scopes:[...s.scopes].sort(),connectedAt:s.connectedAt}))})).digest('hex');
 }
 export async function delegateGoogle(a,name,route,args,delegate=remote) {
   const expected=googleContract(name,a),proof=await delegate(a,['google',route,name,'--expect',expected,...args]);
@@ -52,14 +57,14 @@ export async function delegateGoogle(a,name,route,args,delegate=remote) {
 const accountRuling=(key,name)=>key===`email.${name}`||key===`blocked.${name}`||['service','scope','instructions','grant'].some(prefix=>key.startsWith(`${prefix}.${name}.`));
 export function googleMetadata(file,name,a){
  insist(local(a.machine),'WRONG_MACHINE','Metadata must come from the holder');const d=load(file);
- return {protocol:'google-rulings-v1',account:name,machine:a.machine.id,bridge:{name:a.bridge.name,port:a.bridge.port,profileDir:a.bridge.profileDir},google:a.google||null,permissions:a.permissions.filter(p=>p.via==='google'),rulings:Object.fromEntries(Object.entries(d.rulings).filter(([k])=>accountRuling(k,name)||k===`project.${a.google?.person}`||k===`production.${a.google?.person}`))};
+ return {protocol:'google-rulings-v1',account:name,machine:a.machine.id,bridge:{name:a.bridge.name,port:a.bridge.port,profileDir:a.bridge.profileDir},google:a.google||null,permissions:a.permissions.filter(p=>p.via==='google'),rulings:Object.fromEntries(Object.entries(d.rulings).filter(([k])=>accountRuling(k,name)||k===`project.${a.google?.person}`||k===`production.${a.google?.person}`||k===`testing.${a.google?.person}`))};
 }
 export async function syncGoogle(file,name,a,{delegate=remote}={}){
  insist(!local(a.machine),'GOOGLE_SYNC_LOCAL','Run sync on the controller');
  const report=await delegate(a,['google','metadata',name]);
  insist(report?.protocol==='google-rulings-v1'&&report.account===name&&report.machine===a.machine.id&&JSON.stringify(report.bridge)===JSON.stringify({name:a.bridge.name,port:a.bridge.port,profileDir:a.bridge.profileDir}),'GOOGLE_REMOTE_CONTRACT','Metadata came from another bridge, holder or protocol');
  insist(report.rulings&&typeof report.rulings==='object'&&!Array.isArray(report.rulings)&&Array.isArray(report.permissions),'GOOGLE_REMOTE_CONTRACT','Holder metadata must include a complete ruling and API-grant snapshot');
- await mutate(file,name,(fresh,data)=>{if(report.google)fresh.google=report.google;else delete fresh.google;fresh.permissions=[...fresh.permissions.filter(p=>p.via!=='google'),...(report.google?report.permissions||[]:[])];for(const key of Object.keys(data.rulings))if(accountRuling(key,name))delete data.rulings[key];for(const [key,r]of Object.entries(report.rulings||{})){insist(accountRuling(key,name)||key===`project.${fresh.google?.person}`||key===`production.${fresh.google?.person}`,'GOOGLE_REMOTE_CONTRACT','Unrelated ruling in remote metadata');data.rulings[key]=r;}});
+ await mutate(file,name,(fresh,data)=>{if(report.google)fresh.google=report.google;else delete fresh.google;fresh.permissions=[...fresh.permissions.filter(p=>p.via!=='google'),...(report.google?report.permissions||[]:[])];for(const key of Object.keys(data.rulings))if(accountRuling(key,name))delete data.rulings[key];for(const [key,r]of Object.entries(report.rulings||{})){insist(accountRuling(key,name)||key===`project.${fresh.google?.person}`||key===`production.${fresh.google?.person}`||key===`testing.${fresh.google?.person}`,'GOOGLE_REMOTE_CONTRACT','Unrelated ruling in remote metadata');data.rulings[key]=r;}});
  return {account:name,synced:true,secretsTransferred:false};
 }
 function safeFailure(raw) {
@@ -157,7 +162,7 @@ const scopeName = s => s==='email'?'https://www.googleapis.com/auth/userinfo.ema
 export function judgeGoogle(a, service, report, extraScopes=[]) {
   if(report?.token_error)throw safeFailure(report.token_error);
   insist(report?.token_valid===true&&report.auth_method==='oauth2','GOOGLE_SIGNED_OUT','No valid API login; stop for the person');
-  insist(a.google.project&&a.google.productionConfirmedAt&&report.project_id===a.google.project,'GOOGLE_PROJECT_MISMATCH','The configured API project differs from the person-owned project');
+  insist(a.google.project&&(a.google.productionConfirmedAt||a.google.testingConfirmedAt)&&report.project_id===a.google.project,'GOOGLE_PROJECT_MISMATCH','The configured API project differs from the person-owned project');
   insist(email(report.user)&&report.user.toLowerCase()===a.google.expectedEmail.toLowerCase(),'GOOGLE_IDENTITY_MISMATCH','Google API identity differs from the intended account');
   insist(Array.isArray(report.scopes)&&report.scopes.every(s=>s==='openid'||s==='email'||s==='profile'||exactScope(s)),'GOOGLE_SCOPE_UNKNOWN','Google did not report a usable granted scope set');
   const actual=[...new Set(report.scopes.map(scopeName))].sort(),required=[...new Set([...identityScopes,...Object.values(a.google.services).flatMap(s=>s.scopes),...extraScopes])].sort();
@@ -171,7 +176,7 @@ export async function changeGoogle(file,name,options,{root=HOME,guard=privateHol
  const a=accountAt(load(file),name);insist(local(a.machine)&&a.google,'GOOGLE_OPT_IN_REQUIRED','Change this account on its holder');await guard(a.machine);drivable(a);
  if(options.email)insist(!Object.entries(load(file).accounts).some(([key,other])=>key!==name&&other.google?.expectedEmail.toLowerCase()===options.email.toLowerCase()),'GOOGLE_CONFLICT','This email already has a registered login');
  const home=googleHome(file,name,a,root);
- if(options['client-file'])return configureProject(file,name,a,{project:a.google.project,clientFile:options['client-file'],ask},{root,guard,rotate:true});
+ if(options['client-file'])return configureProject(file,name,a,{project:a.google.project,clientFile:options['client-file'],audience:options.audience,ask},{root,guard,rotate:true});
  insist(email(options.email)||['admin','unknown','clear'].includes(options.block),'GOOGLE_CHANGE','Supply --email or --block admin|unknown|clear');
  return locked(path.join(home,'operation'),async()=>{if(options.email)retireLogin(home);await mutate(file,name,(fresh,data)=>{
    if(options.email){fresh.google.expectedEmail=options.email;data.rulings[`email.${name}`]={value:options.email,at:now()};for(const s of Object.values(fresh.google.services))delete s.connectedAt;fresh.permissions=fresh.permissions.filter(p=>p.via!=='google');for(const key of Object.keys(data.rulings))if(key.startsWith(`service.${name}.`))delete data.rulings[key];for(const s of Object.values(fresh.sites))if(s.identity?.kind==='google')s.identity.expected={name:options.email};}
@@ -210,37 +215,43 @@ function ensureGoogleIdentitySite(a){
   }
   a.sites.google={signInUrl:'https://accounts.google.com/',identity:{kind:'google',url:'https://myaccount.google.com/',expected:{name:expected}}};
 }
-export async function configureProject(file,name,a,{project,clientFile,ask},{root=HOME,guard=privateHolder,rotate=false}={}) {
+export async function configureProject(file,name,a,{project,clientFile,audience='production',ask},{root=HOME,guard=privateHolder,rotate=false}={}) {
   enabled(file);
   insist(a.google,'GOOGLE_OPT_IN_REQUIRED','Opt in first');insist(local(a.machine),'HUMAN_STEP_ON_HOLDER','Configure the Desktop client on the holder');drivable(a);
   await guard(a.machine);
   insist(projectID(project),'GOOGLE_PROJECT','Supply the owned project ID');
+  insist(['production','testing'].includes(audience),'GOOGLE_AUDIENCE','Choose production or testing');
   const known=load(file).rulings[`project.${a.google.person}`]?.value;
   insist(!known||known===project,'GOOGLE_CONFLICT','Reuse the project already owned by this person');
   if(!known){insist(await ask(`Is ${project} your own project for person ${a.google.person}? Type yes: `)==='yes','GOOGLE_PROJECT_CONFIRMATION','Project ownership not confirmed');await remember(file,`project.${a.google.person}`,project);}
   if(!clientFile){
     await mutate(file,name,fresh=>{insist(!fresh.google.project||fresh.google.project===project,'GOOGLE_PROJECT_EXISTS','A configured project is not replaced');fresh.google.project=project;});
-    return {account:name,project,next:'google console: enable the needed API, configure consent, create Desktop client, publish Production; then google project --client-file'};
+    return {account:name,project,next:'google console: enable the needed API, configure consent, create Desktop client, then confirm the actual audience when importing it'};
   }
   outsideLive(clientFile);outsideLive(canonical(clientFile));privateStat(clientFile,false);
   const source=read(clientFile),client=source?.installed;
   insist(client&& !source.web && client.project_id===project && typeof client.client_id==='string' && client.client_id.endsWith('.apps.googleusercontent.com') && typeof client.client_secret==='string' && client.client_secret.length>0 && client.auth_uri==='https://accounts.google.com/o/oauth2/auth' && client.token_uri==='https://oauth2.googleapis.com/token','GOOGLE_DESKTOP_CLIENT','Download an installed (Desktop) OAuth client from the intended project');
-  const production=load(file).rulings[`production.${a.google.person}`];
-  if(production?.value!==project)insist(await ask('Is this Desktop client ready with its audience published to Production? Type yes: ')==='yes','GOOGLE_PROJECT_CONFIRMATION','Production must be confirmed by the person');
-  if(production?.value!==project)await remember(file,`production.${a.google.person}`,project);
+  const audienceRule=load(file).rulings[`${audience}.${a.google.person}`];
+  const alreadyConfirmed=audienceRule?.value===project&&!!a.google[`${audience}ConfirmedAt`]&&!a.google[`${audience==='testing'?'production':'testing'}ConfirmedAt`];
+  if(!alreadyConfirmed){
+    const prompt=audience==='production'?'Is this Desktop client ready with its audience published to Production? Type yes: ':`Is this app in Testing with ${a.google.expectedEmail} added as a test user? Its Google authorization can expire after 7 days. Type yes: `;
+    insist(await ask(prompt)==='yes','GOOGLE_PROJECT_CONFIRMATION','The actual audience must be confirmed by the person');
+    await remember(file,`${audience}.${a.google.person}`,project);
+  }
   const data=load(file);for(const other of Object.values(data.accounts))if(other.google?.person===a.google.person&&other.google.project)insist(other.google.project===project,'GOOGLE_CONFLICT','Reuse the one project for this person');
   const home=googleHome(file,name,a,root),config=path.join(home,'.config/gws/client_secret.json');
   await locked(path.join(home,'operation'),async()=>{
     await locked(file,async()=>{
       const fresh=load(file),g=accountAt(fresh,name).google;insist(g&&(!g.project||g.project===project),'GOOGLE_PROJECT_EXISTS','A configured project is not replaced');
       insist(fresh.rulings[`project.${g.person}`]?.value===project,'GOOGLE_ACCOUNT_CHANGED','Project ownership changed before client import');
-      g.project=project;g.productionConfirmedAt||=now();validate(fresh);
-      if(rotate){retireLogin(home);for(const s of Object.values(g.services))delete s.connectedAt;}
+      const switchingAudience=!!g[`${audience==='testing'?'production':'testing'}ConfirmedAt`];
+      g.project=project;g[`${audience}ConfirmedAt`]=now();delete g[`${audience==='testing'?'production':'testing'}ConfirmedAt`];validate(fresh);
       if(fs.existsSync(config)){privateStat(config,false);insist(rotate||JSON.stringify(read(config))===JSON.stringify(source),'GOOGLE_CLIENT_CONFLICT','A different client exists; use the human change route to rotate it');if(rotate)atomicJSON(config,source);}else writeNew(config,source);
+      if(rotate||switchingAudience){retireLogin(home);for(const s of Object.values(g.services))delete s.connectedAt;}
       atomicJSON(file,fresh);
     });
   });
-  return {account:name,project,desktopClientInstalled:true,production:'person-confirmed',secretsPrinted:false};
+  return {account:name,project,desktopClientInstalled:true,audience,confirmation:'person-confirmed',...(audience==='testing'?{note:'Testing authorization can expire after 7 days; reconnect when Google requires it.'}:{}),secretsPrinted:false};
 }
 export async function checkGoogle(file,name,a,service,deps={}) {
   enabled(file);
@@ -320,11 +331,11 @@ export async function login(bin,env,scopes,clientID,openURL,{spawnProcess=spawn,
 export async function connect(file,name,a,{service,api,scope,'replace-scope':replaceScope},{ask,...deps}) {
   enabled(file);
   currentGoogle(file,name,a);
-  insist(a.google?.project&&a.google.productionConfirmedAt,'GOOGLE_PROJECT_REQUIRED','Configure your own Desktop client and confirm Production first');drivable(a);
+  insist(a.google?.project&&(a.google.productionConfirmedAt||a.google.testingConfirmedAt),'GOOGLE_PROJECT_REQUIRED','Configure your own Desktop client and confirm its actual audience first');drivable(a);
   insist(local(a.machine),'HUMAN_STEP_ON_HOLDER','Run connect in a human terminal on the holder (SSH terminal is fine); consent appears in that account bridge');
   insist(/^[a-z][a-z0-9-]{0,62}$/.test(service||'')&&/^[a-z][a-z0-9-]*\.googleapis\.com$/.test(api||'')&&exactScope(scope),'GOOGLE_EXACT_SCOPE','Choose one service, one API and one exact scope for this need');
   const d={root:HOME,guard:privateHolder,install:installGws,execute:run,login,verify,launch,oc:ocPrivate,navigate,check,ask,...deps};await d.guard(a.machine);
-  insist(load(file).rulings[`production.${a.google.person}`]?.value===a.google.project,'GOOGLE_PROJECT_CONFIRMATION','The person must confirm the current Production attestation before consent');
+  insist(audienceConfirmed(load(file).rulings,a.google),'GOOGLE_PROJECT_CONFIRMATION','The person must confirm the current audience before consent');
   insist(!['admin','unknown'].includes(load(file).rulings[`blocked.${name}`]?.value),'GOOGLE_BLOCK_REVIEW_REQUIRED','Review the saved blocked/unresolved outcome with the person; never retry or bypass it');
   insist(scope!=='https://www.googleapis.com/auth/cloud-platform','GOOGLE_SCOPE_TOO_BROAD','Cloud platform control is not a service-scoped Google connection');
   const scopeService=scope==='https://mail.google.com/'?'gmail':scope.split('/auth/')[1]?.split(/[./]/)[0],apiService=api==='calendar-json.googleapis.com'?'calendar':api.split('.')[0];
@@ -350,7 +361,7 @@ export async function connect(file,name,a,{service,api,scope,'replace-scope':rep
     // Freeze the account definition while consenting; a concurrent edit cannot change the intended identity/scopes.
     const baseline=JSON.stringify(a.google);
     const ruleBaseline=JSON.stringify(load(file).rulings);enabled(file);insist(load(file).rulings[`service.${name}.${service}`]?.value!=='no','GOOGLE_SERVICE_CONSENT','Service was declined before consent');
-    insist(JSON.stringify(load(file).rulings)===approvedRules,'GOOGLE_ACCOUNT_CHANGED','Saved rulings changed before consent');currentGoogle(file,name,a);const latest=load(file).rulings;for(const [key,s]of Object.entries(candidate.google.services)){const revoked=latest[`scope.${name}.${key}`];insist(!scopeDenied(revoked,s.scopes),'GOOGLE_SCOPE_REVOKED','A scope in this consent union was revoked; remove or change that connection first');insist(latest[`service.${name}.${key}`]?.value!=='no','GOOGLE_SERVICE_CONSENT','A service in this consent union was declined');}insist(latest[`production.${a.google.person}`]?.value===a.google.project,'GOOGLE_PROJECT_CONFIRMATION','Production attestation changed before consent');insist(!['admin','unknown'].includes(latest[`blocked.${name}`]?.value),'GOOGLE_BLOCK_REVIEW_REQUIRED','Consent was blocked before this attempt');
+    insist(JSON.stringify(load(file).rulings)===approvedRules,'GOOGLE_ACCOUNT_CHANGED','Saved rulings changed before consent');currentGoogle(file,name,a);const latest=load(file).rulings;for(const [key,s]of Object.entries(candidate.google.services)){const revoked=latest[`scope.${name}.${key}`];insist(!scopeDenied(revoked,s.scopes),'GOOGLE_SCOPE_REVOKED','A scope in this consent union was revoked; remove or change that connection first');insist(latest[`service.${name}.${key}`]?.value!=='no','GOOGLE_SERVICE_CONSENT','A service in this consent union was declined');}insist(audienceConfirmed(latest,a.google),'GOOGLE_PROJECT_CONFIRMATION','Audience attestation changed before consent');insist(!['admin','unknown'].includes(latest[`blocked.${name}`]?.value),'GOOGLE_BLOCK_REVIEW_REQUIRED','Consent was blocked before this attempt');
     insist(JSON.stringify(accountAt(load(file),name).google)===baseline,'GOOGLE_ACCOUNT_CHANGED','Account changed before consent; no OAuth started');
     const gsite=Object.entries(a.sites).find(([,s])=>s.identity?.kind==='google'&&s.identity.expected?.name?.toLowerCase()===a.google.expectedEmail.toLowerCase());
     insist(gsite,'GOOGLE_BROWSER_IDENTITY','Enroll a Google browser identity matching this API account before consent');

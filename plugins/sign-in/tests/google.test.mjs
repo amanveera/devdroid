@@ -73,6 +73,16 @@ test('Desktop client is explicit, private, person owned and never imported from 
   const result=await configureProject(f.file,'work',a,{project:a.google.project,clientFile:client,ask:yes},{root:f.dir,guard:async()=>{}});assert.equal(JSON.stringify(result).includes('synthetic-secret'),false);
   const dest=path.join(googleHome(f.file,'work',a,f.dir),'.config/gws/client_secret.json');assert.equal(fs.statSync(dest).mode&0o777,0o600);assert.equal(read(dest).installed.project_id,a.google.project);
 });
+test('Testing audience is recorded honestly and permits a test-user connection',async t=>{
+  const f=fixture(t);delete f.a.google.productionConfirmedAt;atomicJSON(f.file,{version:1,accounts:{work:f.a}});
+  const client=path.join(f.dir,'testing-download.json');fs.writeFileSync(client,JSON.stringify({installed:{client_id:'synthetic.apps.googleusercontent.com',client_secret:'synthetic-secret',project_id:'sample-owned-project',auth_uri:'https://accounts.google.com/o/oauth2/auth',token_uri:'https://oauth2.googleapis.com/token'}}),{mode:0o600});
+  const imported=await configureProject(f.file,'work',f.a,{project:'sample-owned-project',clientFile:client,audience:'testing',ask:yes},{root:f.dir,guard:async()=>{}});
+  assert.equal(imported.audience,'testing');assert.equal(read(f.file).rulings['testing.sample-person'].value,'sample-owned-project');
+  assert.equal(read(f.file).rulings['production.sample-person'],undefined);assert.equal(read(f.file).accounts.work.google.productionConfirmedAt,undefined);
+  f.a=read(f.file).accounts.work;const {deps}=connectionDeps(f);
+  const connected=await connect(f.file,'work',f.a,{service:'calendar',api:'calendar-json.googleapis.com',scope},deps);
+  assert.equal(connected.status,'signed-in');assert.ok(read(f.file).accounts.work.google.services.calendar.connectedAt);
+});
 test('isolated homes and environment never seed user config, tokens, keys, proxies or ADC',t=>{
   const f=fixture(t),home=googleHome(f.file,'work',f.a,f.dir),other=googleHome(f.file,'other',f.a,f.dir);assert.notEqual(home,other);
   const env=isolatedEnv(home);for(const forbidden of ['GOOGLE_WORKSPACE_CLI_TOKEN','GOOGLE_WORKSPACE_CLI_CLIENT_SECRET','GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE','GOOGLE_APPLICATION_CREDENTIALS','HTTPS_PROXY','NODE_OPTIONS'])assert.equal(env[forbidden],undefined);
