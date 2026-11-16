@@ -106,6 +106,17 @@ Use `--action draft` when asked to draft; never send a draft request. If the com
 cannot confirm the outcome, check Gmail Sent or Drafts before retrying. Gmail API
 draft creation and sending require the `gmail.compose` scope ([Gmail API draft guide](https://developers.google.com/workspace/gmail/api/guides/drafts), [send method](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages.send)).
 
+### Schedule a message
+
+The Gmail API workflow above supports saving a draft or sending immediately; it
+does not provide a scheduled-send action. To send later, save the message as a
+draft and schedule it in Gmail using the **Schedule send** control. Gmail sends
+using the timezone selected in its interface, and the message should appear in
+the **Scheduled** folder. If Gmail's interface is unavailable, keep the message
+as a draft and do not claim it is scheduled. Avoid a local timer: it depends on
+the computer and network being available at the requested time and is not a
+Gmail scheduled message.
+
 Verify the connection and perform a harmless read:
 
 ```sh
